@@ -1,0 +1,38 @@
+# =========================
+# Ignora cartelle generate da colcon
+# =========================
+build/
+install/
+log/
+
+# =========================
+# File temporanei di Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# =========================
+# File di sistema
+# =========================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# =========================
+# File temporanei ROS / simulazioni
+# =========================
+*.db3
+*.bag
+*.yaml
+*.mp4
+
+# =========================
+# Backup o cache editor
+# =========================
+*.bak
+.vscode/
+.idea/
