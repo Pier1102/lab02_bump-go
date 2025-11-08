@@ -1,13 +1,14 @@
 import numpy as np
 if not hasattr(np, 'float'):
     np.float = float
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 import tf_transformations
-import numpy as np
+import math
 
 
 class BumpGoNode(Node):
@@ -16,10 +17,10 @@ class BumpGoNode(Node):
         self.get_logger().info('Bump&Go Node started.')
 
         # === PARAMETRI ===
-        self.declare_parameter('linear_speed', 0.20)
-        self.declare_parameter('angular_speed', 1.50)
+        self.declare_parameter('linear_speed', 0.15)
+        self.declare_parameter('angular_speed', 1.2)
         self.declare_parameter('control_loop_frequency', 10.0)
-        self.declare_parameter('front_threshold', 0.40)
+        self.declare_parameter('front_threshold', 0.45)
 
         self.linear_speed = self.get_parameter('linear_speed').value
         self.angular_speed = self.get_parameter('angular_speed').value
@@ -38,6 +39,7 @@ class BumpGoNode(Node):
         self.yaw = 0.0
         self.is_front_clear = True
         self.turn_left = True
+        self.last_turn_left = True  # memoria direzione precedente
 
 
     # --- CALLBACK ODOM ---
@@ -55,27 +57,35 @@ class BumpGoNode(Node):
         # Calcola vettore degli angoli effettivi
         angles = msg.angle_min + np.arange(len(ranges)) * msg.angle_increment
 
-        # Normalizza gli angoli nel range [-pi, pi]
+        # Normalizza nel range [-pi, pi]
         angles = np.arctan2(np.sin(angles), np.cos(angles))
 
-        # === SELEZIONE SETTORI ===
-        mask_front = (angles > np.deg2rad(-15)) & (angles < np.deg2rad(15))
-        mask_left  = (angles > np.deg2rad(50)) & (angles < np.deg2rad(110))
-        mask_right = (angles > np.deg2rad(-110)) & (angles < np.deg2rad(-50))
+        # === SELEZIONE SETTORI (simmetrici e compatibili con lidar 270°) ===
+        fov = np.deg2rad(20)  # ampiezza del settore
+        mask_front = np.abs(angles) < fov
+        mask_left  = np.abs(angles - np.pi/2) < fov
+        mask_right = np.abs(angles + np.pi/2) < fov
 
+        # Estrai le distanze per ciascun settore
         front = ranges[mask_front]
         left  = ranges[mask_left]
         right = ranges[mask_right]
 
         # === FILTRAGGIO DI SICUREZZA ===
-        # Se un settore risulta vuoto, assegna un valore di distanza massima
         front_min = np.min(front) if front.size > 0 else msg.range_max
         left_avg  = np.mean(left)  if left.size  > 0 else msg.range_max
         right_avg = np.mean(right) if right.size > 0 else msg.range_max
 
-        # === LOGICA ===
+        # === LOGICA CON HYSTERESIS ===
         self.is_front_clear = front_min > self.front_threshold
-        self.turn_left = left_avg > right_avg
+
+        if not self.is_front_clear:
+            # Mantieni la direzione scelta finché non ti liberi
+            self.turn_left = self.last_turn_left
+        else:
+            # Aggiorna la direzione preferita solo quando la strada è libera
+            self.last_turn_left = left_avg > right_avg
+            self.turn_left = self.last_turn_left
 
 
     # --- CONTROL LOOP ---
